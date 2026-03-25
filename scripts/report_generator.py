@@ -3,12 +3,20 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 import os
 
+
+def ensure_output_directory(output_path):
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+
 def generate_excel_report(data_dict, output_path=None):
     if output_path is None:
         output_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'reports', 'report.xlsx'))
     """
     Generates an Excel report summarizing pipeline parameters and predicted risk.
     """
+    ensure_output_directory(output_path)
     df = pd.DataFrame([data_dict])
     df.to_excel(output_path, index=False)
     return output_path
@@ -19,6 +27,7 @@ def generate_pdf_report(data_dict, output_path=None):
     """
     Generates a PDF summary report outlining the pipeline vulnerability evaluation.
     """
+    ensure_output_directory(output_path)
     c = canvas.Canvas(output_path, pagesize=letter)
     width, height = letter
     

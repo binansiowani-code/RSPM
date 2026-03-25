@@ -1,0 +1,24 @@
+RSPM — Integrated Reservoir-Pipeline Leak Prediction System,,,,,,
+,,,,,,
+,,,,,,
+AI-Based Machine Learning | Integrated Reservoir + Pipeline Field Dataset | Final Results,,,,,,
+,,,,,,
+RESERVOIR DATA,,,PIPELINE DATA,,,INTEGRATED RSPM
+300 days,,,300 samples,,,300 records
+"Pressure, Oil/Water Rate, GOR",,,"Diameter, Thickness, CO₂, H₂O",,,Full reservoir-pipeline coupling
+10 engineered features,,,12 pipeline features,,,22 combined features
+,,,,,,
+INTEGRATED MODEL PERFORMANCE SUMMARY,,,,,,
+Model,Test Accuracy,CV Accuracy,CV Std Dev,LRS R²,Corrosion R²,Failure Press R²
+Random Forest,85.00%,80.67%,±3.43%,0.816,0.918,0.999
+SVM (RBF Kernel),83.33%,84.00%,±4.55%,—,—,—
+Reservoir-Only RF*,83.33%,83.33%,±3.50%,0.896,—,—
+* Reservoir-only model (previous phase). Integrated model adds 12 pipeline features for richer risk assessment.,,,,,,
+,,,,,,
+INTEGRATED LEAK RISK CLASS DISTRIBUTION,,,,,,
+Class,Condition,Samples,% Dataset,LRS Range,,
+0,No Leak,73,24.3%,< 20,,
+1,Minor Leak,177,59.0%,20 – 40,,
+2,Moderate Leak,48,16.0%,40 – 60,,
+3,Major Leak,2,0.7%,60 – 80,,
+,TOTAL,300,100%,,,
