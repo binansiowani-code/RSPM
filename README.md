@@ -20,6 +20,12 @@ The application follows a structured pipeline:
 3. Layer 3: AI outputs including classification and regression-based risk indicators
 4. Layer 4: decision outputs mapped to `No Leak`, `Minor Leak`, `Moderate Leak`, and `Major Leak`
 
+## Architecture Diagram
+
+![Architecture diagram placeholder](./reports/architecture-diagram-placeholder.png)
+
+_Replace this placeholder with the final architecture diagram image when it is available._
+
 Recommended actions are:
 
 - `No Leak` -> `Monitor`
