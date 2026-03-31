@@ -1,88 +1,86 @@
 # RSPM Command Center
 
-Production-ready Streamlit dashboard for Reservoir and Surface Pipeline Monitoring (RSPM). The app combines engineering calculations, ML-based leak-risk classification, scenario uploads, and report export in a single interface.
+RSPM Command Center is a Streamlit-based dashboard for Reservoir and Surface Pipeline Monitoring. It combines engineering calculations, architecture-driven feature generation, machine learning risk diagnosis, and report export in one interface for evaluating pipeline integrity and leak severity.
 
-## Features
+## What the Project Does
 
-- Modern Streamlit dashboard for reservoir and pipeline monitoring
-- Engineering metrics including failure pressure, integrity margin, and failure probability
-- ML-based risk diagnosis using the trained model in `models/rspm_models.pkl`
-- Scenario selection from the integrated dataset
-- CSV upload support with validation and template download
-- Categorised reservoir, pipeline, and fluid-chemistry analysis
-- Excel and PDF report export
+- Monitors reservoir, production, and pipeline operating conditions in a single dashboard
+- Calculates engineering indicators such as failure pressure, integrity margin, and failure probability
+- Builds a 4-layer architecture flow from raw inputs to integrated features, leak risk scoring, and decision actions
+- Runs a trained ML model for leak-risk diagnosis using the bundled model artifacts
+- Supports scenario selection from the packaged dataset or custom CSV uploads
+- Exports results as Excel and PDF reports
+
+## 4-Layer Architecture
+
+The application follows a structured pipeline:
+
+1. Layer 1: raw reservoir and pipeline operating inputs
+2. Layer 2: 22 integrated engineered features
+3. Layer 3: AI outputs including classification and regression-based risk indicators
+4. Layer 4: decision outputs mapped to `No Leak`, `Minor Leak`, `Moderate Leak`, and `Major Leak`
+
+Recommended actions are:
+
+- `No Leak` -> `Monitor`
+- `Minor Leak` -> `Inspect`
+- `Moderate Leak` -> `Intervene`
+- `Major Leak` -> `Shut In Well`
 
 ## Project Structure
 
-- `streamlit_app.py`: top-level hosting entrypoint
-- `dashboard/app.py`: main Streamlit dashboard
-- `data/rspm_integrated.csv`: integrated scenario dataset
-- `data/RSPM_Integrated_Analysis.csv`: summary analysis reference
-- `models/rspm_models.pkl`: trained model bundle
-- `scripts/`: engineering, dataset, model, and reporting utilities
+[app.py](/c:/Users/hp/OneDrive/Desktop/RSPM_Project/app.py) is the deployment entrypoint and loads the dashboard module.
 
-## Local Run
+[dashboard/app.py](/c:/Users/hp/OneDrive/Desktop/RSPM_Project/dashboard/app.py) contains the main Streamlit dashboard UI and workflow.
 
-Install dependencies:
+[scripts/architecture_engine.py](/c:/Users/hp/OneDrive/Desktop/RSPM_Project/scripts/architecture_engine.py) builds integrated features, LRS scoring, and decision outputs.
+
+[scripts/pipeline_model.py](/c:/Users/hp/OneDrive/Desktop/RSPM_Project/scripts/pipeline_model.py) contains engineering calculations for failure pressure, failure probability, and health interpretation.
+
+[scripts/report_generator.py](/c:/Users/hp/OneDrive/Desktop/RSPM_Project/scripts/report_generator.py) creates Excel and PDF assessment reports.
+
+[models/rspm_models.pkl](/c:/Users/hp/OneDrive/Desktop/RSPM_Project/models/rspm_models.pkl) stores the trained model bundle used by the dashboard.
+
+[data/rspm_integrated.csv](/c:/Users/hp/OneDrive/Desktop/RSPM_Project/data/rspm_integrated.csv) is the main scenario dataset used in the dashboard.
+
+[data/RSPM_Integrated_Analysis.csv](/c:/Users/hp/OneDrive/Desktop/RSPM_Project/data/RSPM_Integrated_Analysis.csv) is a summary/reference file shown in the app.
+
+[reports/](/c:/Users/hp/OneDrive/Desktop/RSPM_Project/reports) stores generated report outputs.
+
+## Requirements
+
+- Python 3.13 recommended
+- Streamlit and the packages listed in [requirements.txt](/c:/Users/hp/OneDrive/Desktop/RSPM_Project/requirements.txt)
+
+Install dependencies with:
 
 ```powershell
 python -m pip install -r .\requirements.txt
 ```
 
-Start the app:
+## Running Locally
+
+Start the dashboard directly:
 
 ```powershell
-streamlit run .\streamlit_app.py
+python -m streamlit run .\app.py
 ```
 
-Or use the included launcher:
+Or use one of the included launchers:
 
 ```powershell
-.\run_dashboard.bat
+.\run_dashboard.ps1
 ```
 
-## Deploy Options
-
-### Streamlit Community Cloud
-
-1. Push this repository to GitHub.
-2. In Streamlit Community Cloud, create a new app from the repo.
-3. Set the app file to `streamlit_app.py`.
-4. Deploy.
-
-### Render
-
-This repo now includes [render.yaml](/Users/hp/OneDrive/Desktop/RSPM_Project/render.yaml), so Render can deploy it as a Blueprint with the correct build and start commands.
-
-1. Push this repository to GitHub.
-2. In Render, choose `New +` then `Blueprint`.
-3. Connect the repository.
-4. Render will detect `render.yaml` and create the web service automatically.
-5. Deploy the service.
-
-If you prefer manual setup instead of Blueprint, use:
-
-- Environment: `Python 3`
-- Build Command: `pip install -r requirements.txt`
-- Start Command: `streamlit run streamlit_app.py --server.port $PORT --server.address 0.0.0.0`
-
-### Docker
-
-Build the image:
-
-```powershell
-docker build -t rspm-dashboard .
+```bat
+run_dashboard.bat
 ```
 
-Run the container:
+The app will open in Streamlit on the default local port, typically `8501`.
 
-```powershell
-docker run -p 8501:8501 rspm-dashboard
-```
+## Input Data Format
 
-## Upload Format
-
-Uploaded CSVs should contain one row per scenario with these feature columns:
+Uploaded CSV files should contain one row per scenario with these required columns:
 
 - `Reservoir_Pressure_psi`
 - `Reservoir_Temperature_C`
@@ -101,10 +99,45 @@ Uploaded CSVs should contain one row per scenario with these feature columns:
 - `Elevation_Change_m`
 - `Pipeline_Age_years`
 
-`Calculated_Failure_Pressure_psi` is optional because the app can derive it automatically.
+`Calculated_Failure_Pressure_psi` is optional because the app can compute it automatically.
+
+## Outputs
+
+For each scenario, the dashboard can produce:
+
+- failure pressure and failure probability estimates
+- architecture LRS score
+- leak severity decision class
+- recommended operational action
+- downloadable Excel and PDF reports
+
+Generated reports are written to [reports/](/c:/Users/hp/OneDrive/Desktop/RSPM_Project/reports).
+
+## Deployment
+
+### Render
+
+The repository includes [render.yaml](/c:/Users/hp/OneDrive/Desktop/RSPM_Project/render.yaml) for deployment as a Render Blueprint.
+
+- Build command: `pip install -r requirements.txt`
+- Start command: `streamlit run app.py --server.port $PORT --server.address 0.0.0.0`
+
+### Docker
+
+Build the image:
+
+```powershell
+docker build -t rspm-command-center .
+```
+
+Run the container:
+
+```powershell
+docker run -p 8501:8501 rspm-command-center
+```
 
 ## Notes
 
-- `RSPM_Integrated_Analysis.csv` is a summary file, not a prediction input dataset.
-- Generated reports are written to `reports/`.
-- On Render, the filesystem is ephemeral, so generated reports are temporary and recreated at runtime.
+- The dashboard uses the packaged model artifact in `models/rspm_models.pkl`
+- `RSPM_Integrated_Analysis.csv` is a reference summary, not a prediction input file
+- Render deployments use ephemeral storage, so generated report files are temporary

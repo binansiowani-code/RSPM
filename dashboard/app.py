@@ -15,6 +15,16 @@ from scripts.pipeline_model import (  # noqa: E402
     calculate_failure_probability,
     determine_pipeline_health_status,
 )
+from scripts.architecture_engine import (  # noqa: E402
+    DECISION_ACTIONS,
+    INTEGRATED_FEATURES,
+    RAW_INPUT_FEATURES,
+    augment_with_architecture,
+    build_integrated_feature_frame,
+    build_single_scenario_frame,
+    resolve_decision_output,
+    summarize_architecture,
+)
 from scripts.report_generator import generate_excel_report, generate_pdf_report  # noqa: E402
 
 
@@ -45,8 +55,7 @@ def load_ml_assets():
     model_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "models", "rspm_models.pkl")
     )
-    data = joblib.load(model_path)
-    return data["model"], data["scaler"], data["feature_names"]
+    return joblib.load(model_path)
 
 
 @st.cache_data
@@ -54,7 +63,7 @@ def load_integrated_dataset():
     dataset_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "data", "rspm_integrated.csv")
     )
-    return pd.read_csv(dataset_path)
+    return augment_with_architecture(pd.read_csv(dataset_path))
 
 
 @st.cache_data
@@ -387,32 +396,12 @@ def get_class_color(label):
     return mapping.get(label_text, "#8ea6c6")
 
 
-def build_input_frame(values, failure_pressure):
-    input_data_dict = {
-        "Reservoir_Pressure_psi": [values["res_pressure"]],
-        "Reservoir_Temperature_C": [values["res_temp"]],
-        "Oil_Production_Rate_bbl_day": [values["oil_rate"]],
-        "Gas_Production_Rate_MSCF_day": [values["gas_rate"]],
-        "Water_Cut_percent": [values["water_cut"]],
-        "Pipeline_Diameter_m": [values["pipeline_diameter"]],
-        "Wall_Thickness_mm": [values["wall_thickness"]],
-        "Pipeline_Length_km": [values["pipeline_length"]],
-        "Flow_Velocity_m_s": [values["flow_velocity"]],
-        "Fluid_Density_kg_m3": [values["fluid_density"]],
-        "Fluid_Viscosity_cP": [values["fluid_viscosity"]],
-        "Corrosion_Rate_mm_year": [values["corrosion_rate"]],
-        "Internal_Pressure_psi": [values["internal_pressure"]],
-        "Temperature_Gradient_C_km": [values["temp_gradient"]],
-        "Elevation_Change_m": [values["elevation_change"]],
-        "Pipeline_Age_years": [values["pipeline_age"]],
-        "Calculated_Failure_Pressure_psi": [failure_pressure],
-    }
-    return pd.DataFrame(input_data_dict)
+def build_input_frame(values):
+    return build_single_scenario_frame(values)
 
 
-def validate_uploaded_dataset(df, feature_names):
-    required_without_failure = [name for name in feature_names if name != "Calculated_Failure_Pressure_psi"]
-    missing_required = [name for name in required_without_failure if name not in df.columns]
+def validate_uploaded_dataset(df, raw_input_features):
+    missing_required = [name for name in raw_input_features if name not in df.columns]
     if missing_required:
         return False, missing_required
     return True, []
@@ -430,7 +419,7 @@ def looks_like_summary_csv(df):
     return any(marker in flattened for marker in summary_markers)
 
 
-def build_upload_template(feature_names):
+def build_upload_template(raw_input_features):
     template_row = {
         "Reservoir_Pressure_psi": 4500.0,
         "Reservoir_Temperature_C": 85.0,
@@ -448,9 +437,8 @@ def build_upload_template(feature_names):
         "Temperature_Gradient_C_km": 1.5,
         "Elevation_Change_m": -10.0,
         "Pipeline_Age_years": 15.0,
-        "Calculated_Failure_Pressure_psi": 26250.0,
     }
-    return pd.DataFrame([[template_row[name] for name in feature_names]], columns=feature_names)
+    return pd.DataFrame([[template_row[name] for name in raw_input_features]], columns=raw_input_features)
 
 
 def build_parameter_categories(values, failure_pressure):
@@ -519,10 +507,15 @@ def build_parameter_categories(values, failure_pressure):
 
 
 def make_display_name(sample_row, sample_index):
+    risk_label = sample_row.get(
+        "Architecture_Risk_Class",
+        sample_row.get("Leak_Risk_Class", "Scenario"),
+    )
+    lrs_score = float(sample_row.get("Architecture_LRS", 0.0))
     return (
         f"Sample {sample_index:04d} | "
-        f"{sample_row['Leak_Risk_Class']} risk | "
-        f"{sample_row['Failure_Probability'] * 100:.1f}% fail prob"
+        f"{risk_label} | "
+        f"LRS {lrs_score:.1f}"
     )
 
 
@@ -769,10 +762,10 @@ def generate_failure_gauge(failure_probability):
 
 
 def generate_class_distribution_chart(dataset):
-    if "Leak_Risk_Class" not in dataset.columns:
+    if "Architecture_Risk_Class" not in dataset.columns:
         return None
 
-    counts = dataset["Leak_Risk_Class"].value_counts()
+    counts = dataset["Architecture_Risk_Class"].value_counts()
     labels = counts.index.tolist()
     colors = [get_class_color(label) for label in labels]
 
@@ -803,7 +796,12 @@ inject_styles()
 sns.set_theme(style="white")
 
 try:
-    model, scaler, feature_names = load_ml_assets()
+    model_bundle = load_ml_assets()
+    model = model_bundle["model"]
+    scaler = model_bundle["scaler"]
+    feature_names = model_bundle["feature_names"]
+    raw_input_features = model_bundle.get("raw_input_features", RAW_INPUT_FEATURES)
+    regressors = model_bundle.get("regressors", {})
     integrated_dataset = load_integrated_dataset()
     analysis_summary = load_analysis_summary()
 except Exception as exc:
@@ -846,33 +844,16 @@ elif scenario_mode == "Upload CSV":
     uploaded_file = st.sidebar.file_uploader(
         "Upload scenario CSV",
         type=["csv"],
-        help="Upload a CSV with the model feature columns. "
-        "`Calculated_Failure_Pressure_psi` can be omitted and will be recomputed.",
+        help="Upload a CSV with the base Layer 1 input columns. "
+        "Integrated Layer 2 features are derived automatically.",
     )
     if uploaded_file is not None:
         uploaded_df = pd.read_csv(uploaded_file)
-        is_valid, missing_columns = validate_uploaded_dataset(uploaded_df, feature_names)
+        is_valid, missing_columns = validate_uploaded_dataset(uploaded_df, raw_input_features)
         if is_valid:
-            if "Calculated_Failure_Pressure_psi" not in uploaded_df.columns:
-                uploaded_df["Calculated_Failure_Pressure_psi"] = uploaded_df.apply(
-                    lambda row: calculate_failure_pressure(
-                        row["Pipeline_Diameter_m"],
-                        row["Wall_Thickness_mm"],
-                        row["Corrosion_Rate_mm_year"],
-                        row["Pipeline_Age_years"],
-                    ),
-                    axis=1,
-                )
+            uploaded_df = augment_with_architecture(uploaded_df)
             uploaded_options = {
-                make_display_name(
-                    pd.Series(
-                        {
-                            "Leak_Risk_Class": row.get("Leak_Risk_Class", "Uploaded"),
-                            "Failure_Probability": row.get("Failure_Probability", 0.0),
-                        }
-                    ),
-                    idx,
-                ): idx
+                make_display_name(row, idx): idx
                 for idx, row in uploaded_df.iterrows()
             }
             selected_uploaded_label = st.sidebar.selectbox(
@@ -895,14 +876,14 @@ elif scenario_mode == "Upload CSV":
                     "The uploaded CSV is missing required columns: "
                     + ", ".join(missing_columns)
                 )
-            template_df = build_upload_template(feature_names)
+            template_df = build_upload_template(raw_input_features)
             st.sidebar.download_button(
                 "Download upload template",
                 template_df.to_csv(index=False).encode("utf-8"),
                 file_name="RSPM_Upload_Template.csv",
                 mime="text/csv",
             )
-            st.sidebar.caption("Expected columns: " + ", ".join(feature_names))
+            st.sidebar.caption("Expected columns: " + ", ".join(raw_input_features))
 
 with st.sidebar:
     st.markdown("### Reservoir and Production")
@@ -1034,8 +1015,13 @@ failure_pressure = calculate_failure_pressure(
 failure_probability = calculate_failure_probability(
     internal_pressure, failure_pressure, corrosion_rate, pipeline_age
 )
-pressure_ratio = internal_pressure / failure_pressure if failure_pressure else 0.0
-integrity_margin = max(failure_pressure - internal_pressure, 0.0)
+architecture_summary = summarize_architecture(values)
+lrs_score = architecture_summary["lrs_score"]
+architecture_risk = architecture_summary["risk_class"]
+decision_label = architecture_summary["decision_label"]
+decision_action = architecture_summary["decision_action"]
+pressure_ratio = architecture_summary["pressure_ratio"]
+integrity_margin = architecture_summary["integrity_margin"]
 baseline_health = determine_pipeline_health_status("Low", failure_probability)
 health_class, health_accent = get_health_style(baseline_health)
 
@@ -1051,22 +1037,57 @@ st.markdown(
         </p>
         <div class="hero-grid">
             <div class="mini-tile">
-                <div class="mini-tile-label">Live failure probability</div>
-                <div class="mini-tile-value">{failure_probability * 100:.1f}%</div>
+                <div class="mini-tile-label">Architecture LRS</div>
+                <div class="mini-tile-value">{lrs_score:.1f}</div>
             </div>
             <div class="mini-tile">
-                <div class="mini-tile-label">Pressure-to-limit ratio</div>
-                <div class="mini-tile-value">{pressure_ratio:.2f}x</div>
+                <div class="mini-tile-label">4-Class Decision</div>
+                <div class="mini-tile-value">{decision_label}</div>
             </div>
             <div class="mini-tile">
-                <div class="mini-tile-label">Remaining pressure margin</div>
-                <div class="mini-tile-value">{integrity_margin:,.0f} psi</div>
+                <div class="mini-tile-label">Required action</div>
+                <div class="mini-tile-value">{decision_action}</div>
             </div>
         </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
+
+render_section_header(
+    "Architecture Compliance",
+    "The live scenario now follows the requested 4-layer flow: Layer 1 inputs, Layer 2 integrated features, Layer 3 AI outputs, and Layer 4 decision action.",
+)
+architecture_left, architecture_mid, architecture_right = st.columns(3)
+
+with architecture_left:
+    render_stat_card(
+        "Layer 2 integrated features",
+        f"{len(INTEGRATED_FEATURES)}",
+        "10 reservoir-oriented + 12 pipeline-oriented engineered features.",
+        "#4cc9f0",
+    )
+with architecture_mid:
+    render_stat_card(
+        "Layer 3 LRS score",
+        f"{lrs_score:.1f}",
+        "Computed using FRD, CR, PDA, WC, GOR, and PU weightings from the architecture diagram.",
+        get_class_color(architecture_risk),
+    )
+with architecture_right:
+    render_stat_card(
+        "Layer 4 action",
+        decision_action,
+        f"{decision_label} response derived from the combined classifier and LRS thresholds.",
+        get_class_color(decision_label),
+    )
+
+component_frame = pd.DataFrame(
+    [{"Component": key, "Score": round(value, 2)} for key, value in architecture_summary["components"].items()]
+)
+st.markdown('<div class="table-frame">', unsafe_allow_html=True)
+st.dataframe(component_frame, use_container_width=True, hide_index=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 if analysis_summary is not None:
     render_section_header(
@@ -1083,7 +1104,7 @@ with dataset_col:
     st.subheader("Dataset Coverage")
     st.caption("The summary CSV is descriptive, while inference rows come from the integrated dataset.")
     class_mix = (
-        integrated_dataset["Leak_Risk_Class"].value_counts(normalize=True).sort_index() * 100
+        integrated_dataset["Architecture_Risk_Class"].value_counts(normalize=True).reindex(DECISION_ACTIONS.keys(), fill_value=0) * 100
     )
     for class_name, pct in class_mix.items():
         st.metric(f"{class_name} share", f"{pct:.1f}%")
@@ -1168,26 +1189,58 @@ with overview_right:
 
 render_section_header(
     "AI Risk Diagnosis",
-    "Run the trained classifier, lock in the current scenario, and export the assessment package.",
+    "Run the architecture-aligned AI engine: Layer 2 feature integration, Layer 3 classification and regression, then Layer 4 actioning.",
 )
 
-input_data = build_input_frame(values, failure_pressure)
-input_data = input_data[feature_names]
+input_data = build_input_frame(values)
+integrated_input_data = build_integrated_feature_frame(input_data)
+integrated_input_data = integrated_input_data[feature_names]
 
 if "latest_result" not in st.session_state:
     st.session_state.latest_result = None
 
 if st.button("Run risk diagnosis"):
-    scaled_input = scaler.transform(input_data)
+    scaled_input = scaler.transform(integrated_input_data)
     prediction_class = model.predict(scaled_input)[0]
+    predicted_lrs = (
+        float(regressors["lrs"].predict(scaled_input)[0])
+        if "lrs" in regressors
+        else lrs_score
+    )
+    predicted_corrosion = (
+        float(regressors["corrosion_rate"].predict(scaled_input)[0])
+        if "corrosion_rate" in regressors
+        else values["corrosion_rate"]
+    )
+    predicted_failure_pressure = (
+        float(regressors["failure_pressure"].predict(scaled_input)[0])
+        if "failure_pressure" in regressors
+        else failure_pressure
+    )
+    decision_output = resolve_decision_output(
+        prediction_class,
+        predicted_lrs,
+        predicted_corrosion,
+        pressure_ratio,
+    )
     health_status = determine_pipeline_health_status(prediction_class, failure_probability)
     export_payload = input_data.iloc[0].to_dict()
+    export_payload.update(integrated_input_data.iloc[0].to_dict())
     export_payload["Predicted_Leak_Risk_Class"] = prediction_class
+    export_payload["Predicted_LRS_Score"] = round(predicted_lrs, 2)
+    export_payload["Predicted_Corrosion_Rate_mm_year"] = round(predicted_corrosion, 4)
+    export_payload["Predicted_Failure_Pressure_psi"] = round(predicted_failure_pressure, 2)
+    export_payload["Decision_Output"] = decision_output["decision_label"]
+    export_payload["Recommended_Action"] = decision_output["decision_action"]
     export_payload["Failure_Probability_Percent"] = f"{failure_probability * 100:.2f}%"
     export_payload["Infrastructure_Health_Status"] = health_status
 
     st.session_state.latest_result = {
         "prediction_class": prediction_class,
+        "predicted_lrs": predicted_lrs,
+        "predicted_corrosion": predicted_corrosion,
+        "predicted_failure_pressure": predicted_failure_pressure,
+        "decision_output": decision_output,
         "health_status": health_status,
         "export_payload": export_payload,
     }
@@ -1201,8 +1254,12 @@ with diagnosis_left:
         st.markdown(
             f"""
             <div class="risk-banner {banner_class}">
-                <h3>{result["prediction_class"]} risk classification</h3>
-                <p>{result["health_status"]}</p>
+                <h3>{result["decision_output"]["decision_label"]} decision output</h3>
+                <p>
+                    Layer 3 classification: {result["prediction_class"]} |
+                    Layer 3 LRS: {result["predicted_lrs"]:.1f} |
+                    Action: {result["decision_output"]["decision_action"]}
+                </p>
                 <div class="status-pill">Current failure probability: {failure_probability * 100:.2f}%</div>
             </div>
             """,
@@ -1303,9 +1360,9 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 render_section_header(
     "Scenario Snapshot",
-    "A compact view of the exact values being passed into the current engineering and ML pipeline.",
+    "A compact view of the 22 Layer 2 integrated features passed into the architecture-compliant AI engine.",
 )
-display_frame = input_data.T.reset_index()
+display_frame = integrated_input_data.T.reset_index()
 display_frame.columns = ["Feature", "Value"]
 st.markdown('<div class="table-frame">', unsafe_allow_html=True)
 st.dataframe(display_frame, use_container_width=True, hide_index=True)
