@@ -22,9 +22,7 @@ The application follows a structured pipeline:
 
 ## Architecture Diagram
 
-![Architecture diagram placeholder](./reports/architecture-diagram-placeholder.png)
-
-_Replace this placeholder with the final architecture diagram image when it is available._
+![Architecture diagram](./docs/architecture.jpeg)
 
 Recommended actions are:
 
@@ -127,6 +125,18 @@ The repository includes [render.yaml](/c:/Users/hp/OneDrive/Desktop/RSPM_Project
 
 - Build command: `pip install -r requirements.txt`
 - Start command: `streamlit run app.py --server.port $PORT --server.address 0.0.0.0`
+
+### Streamlit Community Cloud
+
+This project can also be deployed directly as a Streamlit app using:
+
+- App file: `app.py`
+
+### Vercel
+
+Vercel is not recommended for this project in its current form. The app is a Streamlit application started with `streamlit run`, while Vercel's Python runtime expects a WSGI or ASGI app entrypoint such as Flask or FastAPI.
+
+If you want to stay on Vercel, the project would need to be reworked into a supported Python web application structure rather than a native Streamlit deployment.
 
 ### Docker
 
